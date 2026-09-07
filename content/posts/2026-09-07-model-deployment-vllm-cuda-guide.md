@@ -1,5 +1,5 @@
 ---
-title: "从显卡到在线服务：vLLM 模型部署与性能排障教程"
+title: "vLLM 与 CUDA 模型部署：从显存到性能排障"
 date: "2026-09-07"
 description: "以 Qwen3-4B-Instruct-2507 和 24GiB 级 NVIDIA 显卡为教学样例，沿餐饮 RAG 请求链解释 CUDA、模型文件、vLLM 调度、显存预算、压测与生产排障。"
 tags: ["模型部署", "vLLM", "CUDA", "LLM推理", "性能工程"]
@@ -7,11 +7,11 @@ tags: ["模型部署", "vLLM", "CUDA", "LLM推理", "性能工程"]
 
 很多“模型已经部署”的项目，上线后才暴露问题：驱动可见但服务加载失败；单请求很快，并发就排队；权重只有几 GiB，长上下文却 OOM；方案里的 `Triton` 也常分不清是语言还是服务器。
 
-本文把问题放在餐饮 RAG 请求链里讲：员工询问三号店牛肉面缺货及替代菜，检索库存和菜品文档后交给 Qwen3-4B-Instruct-2507。重点是理解每个资源、版本和延迟数字为什么存在。
+把问题放回一条具体请求：员工询问三号店牛肉面是否缺货、有什么替代菜，系统检索库存和菜品文档后交给 Qwen3-4B-Instruct-2507。沿着这条链看，显卡资源、版本锁定和延迟指标就不再是孤立的部署参数。
 
 文中的命令是面向 Linux NVIDIA 主机的可复制模板。示例硬件是 24GiB 级显卡；下文显存数字为理论预算，启动参数是待在目标环境验证的示例，不代表实测性能。部署时应把已审核的版本写入变量，先在目标平台验收，再推广到镜像或集群。
 
-## 1. 先画清推理请求：从餐饮 RAG 到 GPU 执行
+## 1. 一次推理请求怎样走到 GPU
 
 ### 1.1 一次请求经过什么
 
@@ -35,7 +35,7 @@ tags: ["模型部署", "vLLM", "CUDA", "LLM推理", "性能工程"]
 
 权限应在检索前把租户、门店和角色条件传给检索层，或在检索过程中逐条过滤；证据拼装完成、送入模型前还要做一次权限复核。这样生成模型收到的上下文本身就是允许该用户看到的内容，而不是先把跨店结果合并后才尝试补救。
 
-### 1.2 为什么后端工程师必须理解硬件
+### 1.2 硬件知识会改变后端判断
 
 在 CPU 服务中，线程池和内存较直观；LLM 请求还同时占用权重、激活、KV cache、workspace 和调度元数据，且资源随 token 动态增长。
 
@@ -72,7 +72,7 @@ print(y.shape, y.device, y.dtype)
 
 PyTorch 的设备与张量语义可用官方文档核对；CUDA 编程模型对线程块和 warp 的说明也适合结合下一节阅读。[PyTorch CUDA 语义](https://pytorch.org/docs/stable/notes/cuda.html)；[CUDA Programming Guide：Programming Model](https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html)
 
-## 2. GPU 基础：SM、warp、Tensor Core 与数据搬运
+## 2. GPU 基础：SM、warp、Tensor Core 和数据搬运
 
 ### 2.1 GPU 不是一颗“大 CPU”
 
@@ -96,7 +96,7 @@ decode 阶段每生成一个 token，都要访问多层权重和历史 KV。此�
 
 可以按 TTFT/TPOT、等待数、KV 使用率和启动显存判断瓶颈；不要从单个 `nvidia-smi` 时间点下结论，应保存请求时间线、vLLM 指标、GPU 采样和应用队列。
 
-## 3. CUDA 版本地图：Driver、Runtime、Toolkit 与实际能力
+## 3. CUDA 版本地图：Driver、Runtime、Toolkit 各管什么
 
 ### 3.1 四个“CUDA 版本”分别是什么
 
@@ -148,7 +148,7 @@ cuBLAS 提供 GPU 线性代数和矩阵乘法；cuDNN 面向深度学习常用�
 
 Triton 有两个概念：Triton language 是写 GPU kernel 的语言/编译器；NVIDIA Triton Inference Server 是提供模型仓库和协议的服务端。vLLM 使用 Triton kernel 不等于部署 Triton Server。
 
-## 4. 模型文件与精度：能加载不等于会正确对话
+## 4. 模型文件与精度：加载成功还不够
 
 ### 4.1 一个模型目录各自负责什么
 
@@ -190,7 +190,7 @@ PY
 
 如果模型要求自定义代码，必须审核 `trust_remote_code`，不要为绕过错误盲目打开。chat template 不匹配常表现为回答风格异常或工具调用格式错。
 
-## 5. Prefill、Decode 与 KV Cache：显存预算的核心
+## 5. Prefill、Decode 和 KV Cache：显存预算的核心
 
 ### 5.1 两阶段不是两个服务
 
@@ -235,7 +235,7 @@ Prefix cache 将精确相同 token 前缀（例如系统提示词和固定门店
 
 投机解码用较小 draft model 一次提出多个 token，再由 target model 并行验证。接受率高且 draft 成本低时，decode 循环可以减少；若问题分布、模型语言或采样设置导致接受率低，额外验证反而增加延迟。vLLM 的支持项和参数随版本变化，应以对应版本文档为准。[vLLM 优化与调优](https://docs.vllm.ai/en/stable/configuration/optimization/)
 
-## 6. 单卡 vLLM 模板：从自检到 SSE 验证
+## 6. 单卡 vLLM：从自检到 SSE 验证
 
 ### 6.1 安装与目录原则
 
@@ -298,7 +298,7 @@ docker run --rm --gpus 'device=0' "$CUDA_TEST_IMAGE" nvidia-smi
 
 最后一条只是验证容器能看到 GPU，不代表模型服务已通过。Toolkit 的安装方式与发行版相关，应遵循 NVIDIA 官方指南并纳入主机基线。[NVIDIA Container Toolkit 安装指南](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 
-### 6.3 自检顺序和 curl SSE
+### 6.3 先自检，再用 curl 验证 SSE
 
 先验证 GPU 可见性，再验证模型结构和服务启动日志，最后做协议和业务链路。健康检查应包含模型名、版本、最大上下文和实际可用任务；HTTP 200 只能说明路由响应，不能替代一次真实生成。
 
@@ -346,7 +346,7 @@ SSE 客户端应处理 `data:` 增量、`[DONE]`、断连和超时。网关重�
 
 可以用一轮调度做直观预算：假设 `max-num-batched-tokens=4096`，本轮有 8 条正在 decode 的序列，每条只新增约 1 token，那么剩余约 4088 个 token 才能给新请求的 prefill 块；这不是“8 条请求各自有 4096”，也不是完整历史 KV 被重新计算。若长 RAG prompt 需要 6000 token，它会被拆成后续轮次或等待，具体行为以版本 scheduler 为准。压测时应同时记录每轮新 token、活跃 sequence 和等待数。
 
-## 7. 从单卡到生产：并行、容器、Kubernetes 与压测
+## 7. 从单卡走向生产：并行、容器、Kubernetes 和压测
 
 ### 7.1 TP、PP、DP、EP 的通信代价
 
@@ -370,7 +370,7 @@ readiness 不应只探测 TCP 端口，应检查已加载目标 revision，并�
 
 灰度按 revision、镜像 digest 和硬件池分流，先用少量租户和固定问题集比较错误率、TTFT、P95、显存、质量和成本，再扩大；回滚应恢复可复现的镜像、配置和模型三元组。
 
-### 7.3 TTFT、TPOT、ITL、队列和吞吐
+### 7.3 把 TTFT、TPOT、队列和吞吐分开
 
 建议把一次请求拆成（输出 token 数为 N，且 N>1）：
 
@@ -385,11 +385,11 @@ E2E  = 最后一个 token 时间 - 请求发送时间
 
 SLI 是实际测量的指标，如成功请求率、TTFT P95、TPOT P95、有效 output tok/s；SLO 是团队承诺的目标窗口，例如“正常长度请求 TTFT P95 小于某阈值”；SLA 是对外合同和违约责任。稳定并发表示在固定输入/输出分布下，队列、显存和错误率经过一段观察窗口仍不发散；它不同于瞬时 `max-num-seqs`。有效吞吐应排除错误和取消请求，并注明是 output tok/s、request/s 还是总 tok/s。
 
-压测不要只发同一条短 prompt，应覆盖短问答、长 RAG、不同输出上限、突发并发和稳定到达率。冻结 revision、采样参数、输入集和 warmup，记录 P50/P95/P99，并拆开排队与生成阶段；表中保留并发、输入/输出 token、TTFT、TPOT、错误率、峰值显存和有效吞吐。
+压测不能只发同一条短 prompt。短问答、长 RAG、不同输出上限、突发并发和稳定到达率都要覆盖，同时冻结 revision、采样参数、输入集和 warmup。结果记录 P50/P95/P99，并拆开排队与生成阶段，保留并发、输入/输出 token、TTFT、TPOT、错误率、峰值显存和有效吞吐。
 
 并发增加而吞吐上升、P95 急剧上升，说明批处理收益已被排队吞噬；GPU 利用率低而队列高，查 CPU tokenization、网络、锁和 scheduler；GPU 满且 TPOT 恶化，降并发或输出上限并查带宽/KV。不要用一次最佳 tok/s 替代容量曲线。
 
-## 8. 故障证据、学习路线与面试表达
+## 8. 用证据排障，再组织面试表达
 
 ### 8.1 按症状建立证据链
 
@@ -405,22 +405,18 @@ SLI 是实际测量的指标，如成功请求率、TTFT P95、TPOT P95、有效
 
 排障按时间戳对齐网关 trace、vLLM metrics、CUDA/NCCL 日志和 GPU 采样，先证明请求在哪层等待再改参数。GPU 利用率与慢请求同时出现只是相关，数据库慢也不等于 GPU 是根因。
 
-### 8.2 一条循序渐进的学习路线
+### 8.2 按证据推进学习
 
-第一阶段掌握请求链和模型目录：能解释 tokenizer、config、chat template、权重 dtype，并用 curl 完成一次 SSE。第二阶段掌握硬件与版本：能读 `nvidia-smi`、`torch.version.cuda`、`nvcc` 和 compute capability，知道 Driver/Runtime/Toolkit 的边界。
-
-第三阶段做显存和调度练习：手算 GQA KV，改变长度/并发，观察 TTFT、TPOT、waiting 和 KV 使用率。第四阶段读优化文档与 PagedAttention，理解 batching、prefix cache、FlashAttention、CUDA Graph 的收益和回退。第五阶段再学 TP/PP/DP/EP、灰度和容量模型。
-
-每一阶段都留“可复现证据包”：命令、版本、revision、配置、输入集、指标和结论。面试时据此区分真实实验与文档峰值。
+学习顺序可以沿着请求链推进：先熟悉模型目录和一次 SSE，能解释 tokenizer、config、chat template 与权重 dtype；再补硬件和版本，读懂 `nvidia-smi`、`torch.version.cuda`、`nvcc` 与 compute capability 的差异。接着手算 GQA KV，改变长度和并发，观察 TTFT、TPOT、waiting 及 KV 使用率；再读 PagedAttention 和相关优化文档，理解 batching、prefix cache、FlashAttention、CUDA Graph 的收益与回退，最后进入 TP/PP/DP/EP、灰度和容量模型。每一步都保存命令、版本、revision、配置、输入集、指标和结论，面试时才分得清实际实验与文档峰值。
 
 ### 8.3 30 秒面试表达
 
 “我把 LLM 部署拆成兼容性、模型文件、显存、调度和治理五层。以 Qwen3-4B 为例，先锁定 driver、PyTorch/vLLM、镜像和模型 revision，按权重、GQA KV、workspace 与余量预算显存。在线请求分 prefill/decode，用 vLLM 做 paged KV 和 continuous batching；压测看 TTFT、TPOT、队列、P95 与有效吞吐，故障用 trace、vLLM 指标和 GPU/CUDA 日志对齐定位。”
 
-### 8.4 2 分钟面试表达
+### 8.4 两分钟面试表达
 
 “餐饮 RAG 先做租户/门店过滤，tokenizer 生成输入，vLLM 组成动态批次。Prefill 决定 TTFT，decode 逐 token 读权重和 KV，决定 TPOT。Qwen3-4B 是 36 层、8 个 KV 头、128 head_dim，BF16 KV 按 2×36×8×128×2 字节/token 预算，所以 context 和并发必须一起看。
 
 “兼容性上区分 driver、runtime、Toolkit/nvcc、PyTorch CUDA 和 `nvidia-smi`，再核对 compute capability；cuBLAS、cuDNN、NCCL 和 Triton language/server 各有边界。部署锁定 digest/revision，先自检再压测；P95 变差看 queue、KV、带宽和 NCCL，多卡按容量与拓扑选 TP/PP/DP/EP，配合探针灰度。”
 
-记住：模型部署是让版本、硬件、数据路径、动态 token 资源和 SLA 在可验证闭环里成立。下一步填好版本变量，先跑单卡自检，再建立 TTFT/TPOT/P95 容量曲线。
+部署工作最后要落到可复现的证据：版本、硬件、数据路径、动态 token 资源和 SLA 都能对上。先填好版本变量，跑通单卡自检，再建立 TTFT、TPOT 和 P95 的容量曲线。

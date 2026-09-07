@@ -1,5 +1,5 @@
 ---
-title: "从一条餐饮请求看懂大模型与 Transformer 的执行链"
+title: "一条餐饮请求怎样穿过 Transformer"
 date: 2026-09-07
 description: "沿着餐饮助手的一次请求示例，拆开 tokenizer、注意力、RoPE、KV Cache、训练和 Agent 边界，配合维度公式与手算例理解大模型如何生成下一个 token。"
 tags: [AI, Transformer, 大模型, 深度学习, 推理]
@@ -8,9 +8,9 @@ draft: false
 
 大模型回答一句话，表面上是“输入文字，输出文字”，内部却是一条有严格数据依赖的计算链：消息先套入聊天模板，再被 tokenizer 切成 token id；id 查到 embedding 后，经过多层 Transformer decoder；最后一层 hidden state 经 lm head 变成整个词表的 logits，采样器选出下一个 token，循环往复直到停止。
 
-本文用一个餐饮助手贯穿这条链。顾客说：“今晚两位，想吃清淡的川菜，预算每人 80 元。”系统还知道顾客不吃花生，且只能推荐当前门店菜单中的菜。这个例子既能说明模型如何处理上下文，也能说明模型参数、检索、库存工具和业务校验各自负责什么。
+用一个餐饮助手来跟踪这条链：顾客说“今晚两位，想吃清淡的川菜，预算每人 80 元”，系统还知道顾客不吃花生，只能推荐当前门店菜单中的菜。这样既能看清模型怎样处理上下文，也能看清参数、检索、库存工具和业务校验各自负责哪一段。
 
-## 一条请求如何变成 token 和向量
+## 请求先变成 token 和向量
 
 ### 聊天模板先确定消息边界
 
@@ -30,7 +30,7 @@ draft: false
 
 特殊 token 的名称、顺序和是否需要结尾标记由具体模型的 tokenizer 配置决定。一个模型的模板不能直接套给另一个模型。模板的作用是标出“谁说了什么”和“回答从哪里开始”，它不是给模型增加事实。
 
-### tokenizer、embedding 与 hidden state
+### tokenizer、embedding 和 hidden state
 
 tokenizer 按词、子词、字符、字节或混合规则切分文本。为便于演示，假定词表中有 `<|user|>=11`、`<|assistant|>=12`、`<|end|>=13`，并把“今晚”“两位”“想吃”“清淡”“川菜”“预算”“每人”“80”“元”分别暂记为 201 到 209。局部输入可以写成：
 
@@ -48,9 +48,9 @@ tokenizer 按词、子词、字符、字节或混合规则切分文本。为便�
 
 模型不是执行 `menu[清淡][川菜]` 的菜单查表器：attention 会在连续表示中动态聚合上下文，MLP 会做非线性组合；当前库存、价格和过敏原仍应由检索或工具提供并由业务层校验。
 
-## 模型家族与张量维度
+## 先认清模型家族和张量维度
 
-### decoder-only、encoder-only 和 encoder-decoder
+### 三种模型家族各自处理什么
 
 Llama、GPT 一类模型通常是 decoder-only。输入和待生成内容在一条序列上，因果 mask 规定位置 `t` 只能读取位置 `s<=t`，训练目标是预测下一个 token，推理时从 assistant 起始位置逐个生成。
 
@@ -60,7 +60,7 @@ BERT 一类 encoder-only 模型对输入使用双向注意力，位置可以读�
 
 ### 一组贯穿全文的维度
 
-为避免把 value 和 vocabulary 都写成 V，本文使用下表符号：
+为避免把 value 和 vocabulary 都写成 V，下面统一使用这组符号：
 
 | 符号 | 含义 | 示例 |
 | --- | --- | ---: |
@@ -88,7 +88,7 @@ q'2i+1 = q2i*sin(theta) + q2i+1*cos(theta)
 
 K 使用其所在位置对应的旋转。点积因此携带相对位置信息。缓存 K 时，要保留已经按原位置旋转后的结果，或严格遵循实现约定恢复。位置 id 是时间位置，和 token id 是两套不同的编号。
 
-## 一层 Llama 类 decoder 怎样前向
+## 一层 Llama 类 decoder 如何前向
 
 ### pre-norm、QKV 与残差
 
@@ -129,7 +129,7 @@ attention 输出经过 output projection 回到 D 维，与输入逐元素相加
 
 所有层完成后，hidden state 仍是 `[B,T,D]`。final RMSNorm 后，lm head 映射到 `[B,T,Vocab]`。自回归生成通常只取最后一个有效位置的 logits：第 j 项是下一个 token id j 的未归一化偏好。经过温度、top-k、top-p 和停止规则后选出一个 token，再把它追加进序列。
 
-## Attention 的公式与一个手算例
+## Attention 公式：用一个小例子算一遍
 
 ### scaled dot-product 的形状
 
@@ -169,7 +169,7 @@ decode 时 query 长度和 key 长度往往不同：历史长度为 128、新 to
 
 左 padding、右 padding 和 packed sequence 会进一步改变布局，`attention_mask` 的 0/1 语义要以具体框架实现为准。
 
-## Prefill、decode 与 KV Cache 的因果时序
+## Prefill、decode 和 KV Cache 的时序
 
 ### 第一枚输出 token 从哪里来
 
@@ -205,7 +205,7 @@ KV cache 通常按层保存历史 K、V，形状可抽象为 `[B,Hkv,K,dh]`。�
 
 32 层约 512 MiB，还未计入元数据和 batch 增长。若改为同样头数为 32 的 MHA，cache 大约是 GQA 的四倍；MQA 可进一步减少存储，但可能牺牲部分表达能力。cache 让 attention 的历史部分避免重复投影，不能让新 token 不经计算就出现，也不能消除读取全部历史 K/V 的带宽成本。
 
-## 生成、训练与推理成本
+## 生成、训练和推理成本
 
 ### 温度、top-k、top-p 与停止
 
@@ -252,7 +252,7 @@ FlashAttention 通过分块和在线 softmax 减少中间矩阵的显存读写�
 
 低 batch 的 decode 常受权重和 KV 读取带宽影响；prefill 更容易发挥矩阵计算吞吐。连续批处理可在 decode 阶段动态加入和移除请求，但服务端必须分别管理 cache、取消、停止状态、最大上下文和租户隔离。投机解码让小模型先提出候选，大模型批量验证，被接受的 token 可减少大模型逐 token 调用；它要求正确处理 cache 回滚和随机状态，收益取决于候选模型与目标模型的分布接近程度。
 
-## RAG、Agent 与模型前向的边界
+## RAG、Agent 和模型前向各自负责什么
 
 ### 餐饮助手的真实链路
 
@@ -266,7 +266,7 @@ Agent 通常是“理解任务—选择工具—执行工具—观察结果—�
 
 SSE 或 WebSocket 可以把文本增量、工具调用增量、错误和完成事件推给客户端。客户端要区分这些事件，服务端也要在取消、重试和断线重连时维护请求状态。TTFT 可能包含排队、检索、网络和 prefill，不能把它简单等同于模型矩阵计算时间；后续 token 速度还会受到 KV cache、批调度和显存带宽影响。
 
-## 源码阅读、演示与故障定位
+## 把公式对回源码，再用演示排障
 
 ### 如何把公式映射到实现
 
@@ -308,7 +308,7 @@ python3 transformer-attention-kv-demo.py
 
 ### 从症状回到数据路径
 
-首 token 慢，优先查看 prompt 长度、检索结果规模、排队和 prefill；后续 token 慢，查看 KV cache 显存、历史长度、批调度和带宽。回答重复时检查采样、重复惩罚、EOS 和上下文追加；回答看到未来内容时检查 label shift、causal mask 与 packed sequence mask；输出菜单外菜品时检查库存工具、证据版本和最终业务校验。
+排查首 token 变慢时，先看 prompt 长度、检索结果规模、排队和 prefill；后续 token 变慢，则转向 KV cache 显存、历史长度、批调度和带宽。重复输出要核对采样、重复惩罚、EOS 与上下文追加；看到未来内容要查 label shift、causal mask 和 packed sequence mask；菜单外菜品则回到库存工具、证据版本和最终业务校验。
 
 如果出现跨租户回答，要同时核对会话上下文、RAG ACL、共享 prefix/cache key、模型与模板版本。乱码通常来自 tokenizer、chat template、特殊 token 或 decode 配置不匹配。一个接口返回 HTTP 200 只表示 HTTP 层报告成功，不能代替工具调用、事件流、权限和最终业务结果的验收。
 
@@ -318,4 +318,4 @@ python3 transformer-attention-kv-demo.py
 
 - GQA、SwiGLU、FlashAttention 和 DPO 分别可参照 [GQA](https://arxiv.org/abs/2305.13245)、[GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202)、[FlashAttention](https://arxiv.org/abs/2205.14135) 与 [DPO](https://arxiv.org/abs/2305.18290)。
 
-读到这里，可以先运行脚本，再沿着一枚 token 核对每层的输入、QKV、mask 和缓存长度。只要能说明“当前位置读取了什么、这次 logits 预测哪个位置、什么状态可以复用”，就能把输入编码、Transformer、生成循环和应用编排放回各自的位置。
+可以先运行脚本，再沿着一枚 token 核对每层的输入、QKV、mask 和缓存长度。真正掌握这条链的标志，是能说清当前位置读取了什么、logits 预测哪个位置，以及哪些状态可以复用。
