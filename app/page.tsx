@@ -223,7 +223,7 @@ export default function Home() {
           如果你也在做 AI 产品、Agent 工程或知识系统，欢迎交换实践。
         </p>
         <div className="contact-row">
-          <a href="https://github.com/wuguobin123" target="_blank" rel="noreferrer">
+          <a href="https://github.com/wgblearn-coder" target="_blank" rel="noreferrer">
             GitHub <span aria-hidden="true">↗</span>
           </a>
           <a href={`${basePath}/posts/`}>
@@ -239,7 +239,7 @@ export default function Home() {
         </div>
         <nav aria-label="页尾导航">
           <a href="mailto:wgblearn@163.com">wgblearn@163.com</a>
-          <a href="https://github.com/wuguobin123" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://github.com/wgblearn-coder" target="_blank" rel="noreferrer">GitHub</a>
           <a href={`${basePath}/posts/`}>文章目录</a>
           <a href="#top">回到顶部 ↑</a>
         </nav>

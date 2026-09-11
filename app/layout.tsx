@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ||
-      "https://wuguobin123.github.io/",
+      "https://wgblearn-coder.github.io/",
   ),
   title: {
     default: "wuguobin · 独立开发者与 AI 实践者",
