@@ -12,7 +12,7 @@ export default function Analytics() {
   // 默认站点 ID；如需更换可用环境变量覆盖（ID 会出现在页面源码中，非敏感信息）
   const baiduId =
     process.env.NEXT_PUBLIC_BAIDU_TONGJI_ID ||
-    "a17ef69d94859756e591fb57df715afd";
+    "4ab702825934d35024963c1cce10100d";
   if (baiduId) {
     return (
       <>
