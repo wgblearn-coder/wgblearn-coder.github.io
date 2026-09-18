@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "2026-08-31-xiaowei-04-plugin-architecture.md",
+                "file": "2026-09-17-chatgpt-codex-readonly-mcp-workflow.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "2026-08-31-xiaowei-04-plugin-architecture"
+              "title": "2026-09-17-chatgpt-codex-readonly-mcp-workflow"
             }
           }
         ]
@@ -71,7 +71,10 @@
             "type": "leaf",
             "state": {
               "type": "bookmarks",
-              "state": {},
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
               "icon": "lucide-bookmark",
               "title": "书签"
             }
@@ -218,11 +221,22 @@
   },
   "active": "28b31912f1c6374c",
   "lastOpenFiles": [
+    "2026-09-07-url-to-render-and-ai-stream.md",
+    "2026-09-17-chatgpt-codex-readonly-mcp-workflow.md",
+    "2026-09-07-redis-principles-production-practices.md",
+    "2026-08-31-xiaowei-04-plugin-architecture.md",
+    "2026-09-07-message-queue-principles-practice.md",
+    "2026-09-07-llm-transformer-execution-guide.md",
+    "2026-09-07-model-deployment-vllm-cuda-guide.md",
+    "2026-09-07-llm-finetuning-sft-lora-dpo-ppo.md",
+    "2026-09-07-databases-algorithms-by-application.md",
+    "2026-09-07-java-web-slow-api-diagnosis.md",
+    "2026-09-07-chatgpt-to-agent-sdd-harness.md",
+    "2026-09-07-rag-implementation-research-dify-ragflow.md",
     "2026-08-31-xiaowei-03-product-governance-roadmap.md",
     "2026-08-31-xiaowei-02-product-workspaces-data.md",
     "2026-08-31-xiaowei-00-overview.md",
     "2026-08-31-xiaowei-01-product-positioning.md",
-    "2026-08-31-xiaowei-04-plugin-architecture.md",
     "2026-08-31-xiaowei-07-tools-skills-artifacts.md",
     "2026-08-31-xiaowei-06-agent-runtime-sessions.md",
     "2026-08-31-xiaowei-05-desktop-dual-host.md",
@@ -233,17 +247,6 @@
     "2026-08-08-pitfalls-04-css-grid-orphan-cells.md",
     "2026-08-08-pitfalls-03-frontend-auth-tenant-mismatch.md",
     "2026-08-08-pitfalls-02-macos-app-deploy-gatekeeper-mlx.md",
-    "2026-08-08-pitfalls-01-python-sqlite3-context-rollback.md",
-    "2026-08-08-pitfalls-00-overview.md",
-    "2026-08-04-001-codex-research-before-coding.md",
-    "2026-08-08-pitfalls-12-multi-cli-orchestrator-from-zero.md",
-    "2026-08-08-pitfalls-11-agent-capability-registration-pattern.md",
-    "2026-08-08-pitfalls-08-builtin-skills-vs-docker-volume.md",
-    "2026-08-08-pitfalls-07-zip-install-skill-monorepo.md",
-    "2026-08-08-pitfalls-05-search-fallback-kills-github.md",
-    "_template.md",
-    "2026-08-04-002-codex-luna-max-subagent-parallel.md",
-    "2026-08-04-002-Codex配置luna-max子代理实现并行执行.md",
     "posts",
     "未命名.canvas",
     "未命名.base"
